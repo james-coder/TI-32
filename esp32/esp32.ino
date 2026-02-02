@@ -32,6 +32,7 @@ constexpr auto MAXSTRARGLEN = 256;
 constexpr auto PICSIZE = 756;
 constexpr auto PICVARSIZE = PICSIZE + 2;
 constexpr auto PASSWORD = 42069;
+constexpr auto RX_WATCHDOG_MS = 5000;
 
 CBL2 cbl;
 Preferences prefs;
@@ -61,6 +62,7 @@ constexpr auto MAXHTTPRESPONSELEN = 4096;
 char response[MAXHTTPRESPONSELEN];
 // image variable (96x63)
 uint8_t frame[PICVARSIZE] = { PICSIZE & 0xff, PICSIZE >> 8 };
+unsigned long last_rx_ms = 0;
 
 void connect();
 void disconnect();
@@ -103,6 +105,15 @@ struct Command commands[] = {
 constexpr int NUMCOMMANDS = sizeof(commands) / sizeof(struct Command);
 constexpr int MAXCOMMAND = 14;
 
+int commandExpectedArgs(int cmd) {
+  for (int i = 0; i < NUMCOMMANDS; ++i) {
+    if (commands[i].id == cmd) {
+      return commands[i].num_args;
+    }
+  }
+  return -1;
+}
+
 uint8_t header[MAXHDRLEN];
 uint8_t data[MAXDATALEN];
 
@@ -127,6 +138,7 @@ void startCommand(int cmd) {
   status = 0;
   error = 0;
   currentArg = 0;
+  last_rx_ms = millis();
   for (int i = 0; i < MAXARGS; ++i) {
     memset(&strArgs[i], 0, MAXSTRARGLEN);
     realArgs[i] = 0;
@@ -263,6 +275,14 @@ void loop() {
     tmp();
   }
   if (command >= 0 && command <= MAXCOMMAND) {
+    const int expectedArgs = commandExpectedArgs(command);
+    if (expectedArgs >= 0 && currentArg < expectedArgs) {
+      if (millis() - last_rx_ms > RX_WATCHDOG_MS) {
+        setError("rx timeout");
+      }
+    }
+  }
+  if (command >= 0 && command <= MAXCOMMAND) {
     for (int i = 0; i < NUMCOMMANDS; ++i) {
       if (commands[i].id == command && commands[i].num_args == currentArg) {
         if (commands[i].wifi && !WiFi.isConnected()) {
@@ -280,6 +300,7 @@ void loop() {
 
 int onReceived(uint8_t type, enum Endpoint model, int datalen) {
   char varName = header[3];
+  last_rx_ms = millis();
 
   Serial.print("unlocked: ");
   Serial.println(unlocked);
