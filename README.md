@@ -1,8 +1,119 @@
 # TI-32
 
-A mod for the TI-84 Plus Silver Edition & TI-84 Plus C Silver Edition calculators to give them internet access and add other features, like test mode breakout and camera support
+TI-32 is a hardware + firmware + server project that adds Wi-Fi-backed features to TI-83+/84+ calculators.
+An ESP32 board connects to the calculator link port, speaks the TI link protocol, and proxies requests to a local
+server for GPT, images, and program downloads.
 
 ![built pcb](./pcb/built.png)
+
+## Project Overview
+
+Core pieces:
+- **ESP32 firmware**: `esp32/esp32.ino` handles link protocol, Wi-Fi, and HTTP requests.
+- **Calculator launcher**: `programs/LAUNCHER.8xp` is the TI-BASIC UI the user runs.
+- **Node server**: `server/` hosts routes for GPT, images, chat, and program downloads.
+- **Optional Python server**: `server-py/server.py` is an experimental helper that types into Discord via pyautogui.
+
+## What Is `.mjs`?
+
+`.mjs` files are **Node.js ES modules**. You run them with `node` just like `.js`, but they use the modern `import`
+syntax. This repo uses `.mjs` for the server and for build helper scripts.
+
+Examples:
+- `node prepareimage.mjs ./test-images/Lenna_(test_image).png`
+- `node prepprog.mjs ./programs/LAUNCHER.8xp ./launcher.var`
+
+## Repository Layout (Key Files)
+
+- `esp32/esp32.ino` - ESP32 firmware sketch.
+- `esp32/secrets.h` - Wi-Fi + server settings (edit this locally).
+- `esp32/launcher.h` - Embedded launcher program (generated).
+- `programs/LAUNCHER.8xp` - TI-BASIC launcher program (transfer to calculator).
+- `server/index.mjs` - Node/Express server.
+- `server/programs/` - Programs served to the calculator.
+- `server/images/` - Monochrome image payloads served to the calculator (generated).
+- `prepare8xp.mjs` / `prepprog.mjs` - Strip `.8xp` headers and output raw var bytes.
+- `prepareimage.mjs` / `image.mjs` - Convert images to TI-84+ monochrome format.
+- `preplauncher.sh` - Regenerates `esp32/launcher.h` from the launcher `.8xp`.
+
+## Quick Start
+
+### 1) Configure and build the ESP32 firmware
+
+Prereqs:
+- Arduino IDE or Arduino CLI
+- ESP32 core installed (esp32:esp32)
+- Libraries: **ArTICL** (for `TICL.h`, `CBL2.h`, `TIVar.h`) and **UrlEncode**
+
+Steps:
+1. Edit `esp32/secrets.h`:
+   - `WIFI_SSID`, `WIFI_PASS`
+   - `SERVER` (example: `http://192.168.1.50:8080`)
+   - `CHAT_NAME` (short ID shown in chat)
+2. Open `esp32/esp32.ino` and select the board (the PCB uses **Seeeduino XIAO ESP32C3**).
+3. Compile and flash.
+
+### 2) Run the server (local machine)
+
+Prereqs:
+- Node.js + npm
+- `OPENAI_API_KEY` for GPT endpoints
+- (Optional) ImageMagick for image conversion scripts
+
+Steps:
+1. `cd server`
+2. `npm install`
+3. Create `server/images` if you plan to use the image features:
+   - `mkdir -p server/images`
+4. Start the server:
+   - `OPENAI_API_KEY=... node index.mjs`
+   - Optionally set `PORT` (default is 8080).
+
+The server uses the working directory to locate:
+- `server/programs/` for downloadable programs
+- `server/images/` for image data
+- `server/chat.json` for chat history (auto-created)
+
+### 3) Load the launcher on the calculator
+
+Transfer `programs/LAUNCHER.8xp` to the calculator using your preferred TI transfer tool, then run it.
+
+Tip: The launcher can request an update from the ESP32 (`SETTINGS -> UPDATE`), which sends an embedded program
+named `TI32` from the ESP32 to the calculator. That embedded program is generated from `programs/LAUNCHER.8xp`.
+
+## Updating the Launcher
+
+If you change `programs/LAUNCHER.8xp`, regenerate the embedded copy and reflash the ESP32:
+
+```
+./preplauncher.sh
+```
+
+If you edit `programs/LAUNCHER.8xp.txt`, you must first re-tokenize it into a `.8xp` using an external TI-BASIC
+tool, then run `./preplauncher.sh`.
+
+## Generating Images
+
+To add images for the calculator:
+
+1. Make sure ImageMagick is installed and `server/images` exists.
+2. Convert a file:
+   ```
+   node prepareimage.mjs ./test-images/Lenna_(test_image).png
+   ```
+
+This writes a monochrome 96x63 payload into `server/images/`.
+Use `./genfiles.sh` to bulk-convert everything in `test-images/`.
+
+## Programs Served by the Server
+
+Drop `.8xp` files into `server/programs/`. The server strips headers on-the-fly using `prepare8xp.mjs` and sends
+raw program bytes to the calculator.
+
+## Optional: `server-py`
+
+`server-py/server.py` is a small Flask app that uses `pyautogui` to type into Discord. It is not required for
+the core TI-32 flow and should be considered experimental.
 
 ## Features to be Added
 
@@ -14,7 +125,6 @@ A mod for the TI-84 Plus Silver Edition & TI-84 Plus C Silver Edition calculator
 - Support for chat history from GPT
 - Support for bigger menu (320x240 resolution only)
 - Support for lowercase text
-- Documentation
 - Basic Web Browsing
 - HTTPS Encryption
 - Email Send and Read
