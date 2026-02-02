@@ -59,6 +59,15 @@ On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or
 If it can’t connect, it starts a SoftAP named `TI-32-SETUP-XXXX` and launches a captive portal.
 On most Android/iOS phones the portal opens automatically. If not, browse to `http://192.168.4.1`.
 
+#### Power management (light sleep)
+
+By default the ESP32 enters light sleep after a short idle period and wakes on TI link activity.
+To disable for testing, add this to `esp32/secrets.h`:
+
+```
+#define POWER_MGMT_ENABLED 0
+```
+
 ### 2) Run the server (local machine)
 
 Prereqs:

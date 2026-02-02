@@ -15,6 +15,8 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 
 // #define CAMERA
 
@@ -38,6 +40,11 @@ constexpr auto RX_WATCHDOG_MS = 5000;
 constexpr auto WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr auto AP_PORTAL_PORT = 80;
 constexpr auto AP_DNS_PORT = 53;
+constexpr auto LIGHT_SLEEP_IDLE_MS = 2000;
+
+#ifndef POWER_MGMT_ENABLED
+#define POWER_MGMT_ENABLED 1
+#endif
 
 CBL2 cbl;
 Preferences prefs;
@@ -79,6 +86,7 @@ char response[MAXHTTPRESPONSELEN];
 // image variable (96x63)
 uint8_t frame[PICVARSIZE] = { PICSIZE & 0xff, PICSIZE >> 8 };
 unsigned long last_rx_ms = 0;
+unsigned long last_activity_ms = 0;
 
 void connect();
 void disconnect();
@@ -337,6 +345,7 @@ void startCommand(int cmd) {
   error = 0;
   currentArg = 0;
   last_rx_ms = millis();
+  last_activity_ms = last_rx_ms;
   for (int i = 0; i < MAXARGS; ++i) {
     memset(&strArgs[i], 0, MAXSTRARGLEN);
     realArgs[i] = 0;
@@ -458,6 +467,7 @@ void setup() {
   memset(header, 0, 16);
   Serial.println("[ready]");
 
+  last_activity_ms = millis();
   if (!connectToWifi(WIFI_CONNECT_TIMEOUT_MS)) {
     startConfigPortal();
   }
@@ -505,11 +515,25 @@ void loop() {
     }
   }
   cbl.eventLoopTick();
+
+#if POWER_MGMT_ENABLED
+  if (!ap_mode && command == -1 && queued_action == NULL) {
+    if (millis() - last_activity_ms > LIGHT_SLEEP_IDLE_MS) {
+      gpio_wakeup_enable((gpio_num_t)TIP, GPIO_INTR_LOW);
+      gpio_wakeup_enable((gpio_num_t)RING, GPIO_INTR_LOW);
+      esp_sleep_enable_gpio_wakeup();
+      Serial.flush();
+      esp_light_sleep_start();
+      last_activity_ms = millis();
+    }
+  }
+#endif
 }
 
 int onReceived(uint8_t type, enum Endpoint model, int datalen) {
   char varName = header[3];
   last_rx_ms = millis();
+  last_activity_ms = last_rx_ms;
 
   Serial.print("unlocked: ");
   Serial.println(unlocked);
@@ -588,6 +612,7 @@ char varIndex(int idx) {
 
 int onRequest(uint8_t type, enum Endpoint model, int* headerlen, int* datalen, data_callback* data_callback) {
   char varName = header[3];
+  last_activity_ms = millis();
   char strIndex = header[4];
   char strname[5] = { 'S', 't', 'r', varIndex(strIndex), 0x00 };
   char picname[5] = { 'P', 'i', 'c', varIndex(strIndex), 0x00 };
