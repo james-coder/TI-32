@@ -137,6 +137,11 @@ Helper wrapper:
 ./scripts/ti-tools-convert.sh ./programs/LAUNCHER.8xp ./programs/LAUNCHER.8xp.txt
 ```
 
+Compare two `.8xp` files while ignoring the 42-byte comment field:
+```
+./scripts/compare-8xp.py ./programs/LAUNCHER.8xp ./programs/LAUNCHER.roundtrip.8xp
+```
+
 ## Generating Images
 
 To add images for the calculator:
