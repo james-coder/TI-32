@@ -1,3 +1,9 @@
+LAUNCHER
+Created by TI-32
+Program
+RAM
+accessible
+latest
 ClrHome
 ClrDraw
 
@@ -37,7 +43,7 @@ Lbl X0:
 Stop
 
 Lbl K0:
-Menu("SETTINGS","CONNECT",C0,"DISCONNECT",D0,"UPDATE",U0,"BACK",B0)
+Menu("SETTINGS","CONNECT",C0,"DISCONNECT",D0,"WIFI",W0,"UPDATE",U0,"BACK",B0)
 
 Lbl B0:
 Goto Q1
@@ -64,6 +70,127 @@ Goto Q1
 Lbl D0:
 1->C
 Send(C)
+0->S
+Repeat S
+Get(S)
+End
+Get(Str1)
+ClrHome
+Disp Str1
+Pause 
+Goto Q1
+
+Lbl W0:
+GridOff
+AxesOff
+
+Lbl W1:
+ClrHome
+0->S
+3->C
+Send(C)
+Repeat S
+Get(S)
+End
+Get(Str1)
+
+Output(1,1,Str1)
+Output(6,1,"L/R=SCAN")
+Output(7,1,"0-3 SEL")
+Output(8,1,"CLR=BACK")
+
+0->K
+Repeat max(K={24,26,102,92,93,94,45})
+getKey->K
+End
+
+If K=45:Then
+Goto Q1
+End
+If K=24:Then
+Goto W1
+End
+If K=26:Then
+Goto W1
+End
+
+If K=102:Then
+0->N
+End
+If K=92:Then
+1->N
+End
+If K=93:Then
+2->N
+End
+If K=94:Then
+3->N
+End
+
+"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.:/!?"->Str9
+"0123456789ABCDEF"->Str8
+
+ClrHome
+Disp "PASS BLANK=KEEP"
+Prompt Str0
+""->Str1
+For(I,1,length(Str0))
+sub(Str0,I,1)->Str2
+inString(Str9,Str2)->A
+If A=0:Then
+Disp "BAD CHAR"
+Pause 
+Goto W0
+End
+A-1->A
+int(A/16)->H
+A-16*H->L
+Str1+sub(Str8,H+1,1)+sub(Str8,L+1,1)->Str1
+End
+Str1->Str3
+
+Disp "SERVER URL"
+Prompt Str0
+""->Str1
+For(I,1,length(Str0))
+sub(Str0,I,1)->Str2
+inString(Str9,Str2)->A
+If A=0:Then
+Disp "BAD CHAR"
+Pause 
+Goto W0
+End
+A-1->A
+int(A/16)->H
+A-16*H->L
+Str1+sub(Str8,H+1,1)+sub(Str8,L+1,1)->Str1
+End
+Str1->Str4
+
+Disp "CHAT NAME"
+Prompt Str0
+""->Str1
+For(I,1,length(Str0))
+sub(Str0,I,1)->Str2
+inString(Str9,Str2)->A
+If A=0:Then
+Disp "BAD CHAR"
+Pause 
+Goto W0
+End
+A-1->A
+int(A/16)->H
+A-16*H->L
+Str1+sub(Str8,H+1,1)+sub(Str8,L+1,1)->Str1
+End
+Str1->Str5
+
+6->C
+Send(C)
+Send(N)
+Send(Str3)
+Send(Str4)
+Send(Str5)
 0->S
 Repeat S
 Get(S)

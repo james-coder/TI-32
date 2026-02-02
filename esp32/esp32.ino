@@ -41,6 +41,9 @@ constexpr auto WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr auto AP_PORTAL_PORT = 80;
 constexpr auto AP_DNS_PORT = 53;
 constexpr auto LIGHT_SLEEP_IDLE_MS = 2000;
+constexpr auto WIFI_SCAN_MAX = 4;
+const char WIFI_ALPHA[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.:/!?";
+constexpr int WIFI_ALPHA_LEN = sizeof(WIFI_ALPHA) - 1;
 
 #ifndef POWER_MGMT_ENABLED
 #define POWER_MGMT_ENABLED 1
@@ -87,6 +90,10 @@ char response[MAXHTTPRESPONSELEN];
 uint8_t frame[PICVARSIZE] = { PICSIZE & 0xff, PICSIZE >> 8 };
 unsigned long last_rx_ms = 0;
 unsigned long last_activity_ms = 0;
+String scan_ssids[WIFI_SCAN_MAX];
+int scan_rssi[WIFI_SCAN_MAX];
+int scan_count = 0;
+bool scan_valid = false;
 
 void connect();
 void disconnect();
@@ -101,6 +108,8 @@ void fetch_chats();
 void send_chat();
 void program_list();
 void fetch_program();
+void wifi_scan();
+void wifi_set();
 
 struct Command {
   int id;
@@ -114,8 +123,10 @@ struct Command commands[] = {
   { 0, "connect", 0, connect, false },
   { 1, "disconnect", 0, disconnect, false },
   { 2, "gpt", 1, gpt, true },
+  { 3, "wifi_scan", 0, wifi_scan, false },
   { 4, "send", 2, send, true },
   { 5, "launcher", 0, launcher, false },
+  { 6, "wifi_set", 4, wifi_set, false },
   { 7, "snap", 0, snap, false },
   { 8, "solve", 1, solve, true },
   { 9, "image_list", 1, image_list, true },
@@ -318,6 +329,73 @@ bool connectToWifi(unsigned long timeoutMs) {
   Serial.print("wifi connect failed: ");
   Serial.println(WiFi.status());
   return false;
+}
+
+int hexDigit(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'A' && c <= 'F') {
+    return 10 + (c - 'A');
+  }
+  if (c >= 'a' && c <= 'f') {
+    return 10 + (c - 'a');
+  }
+  return -1;
+}
+
+bool decodeAlphaHex(const char* hex, String& out) {
+  out = "";
+  size_t len = strlen(hex);
+  if (len == 0) {
+    return true;
+  }
+  if (len % 2 != 0) {
+    return false;
+  }
+  for (size_t i = 0; i < len; i += 2) {
+    int hi = hexDigit(hex[i]);
+    int lo = hexDigit(hex[i + 1]);
+    if (hi < 0 || lo < 0) {
+      return false;
+    }
+    int idx = (hi << 4) | lo;
+    if (idx < 0 || idx >= WIFI_ALPHA_LEN) {
+      return false;
+    }
+    out += WIFI_ALPHA[idx];
+  }
+  return true;
+}
+
+String formatRssi(int rssi) {
+  String r = String(rssi);
+  while (r.length() < 4) {
+    r = String(" ") + r;
+  }
+  if (r.length() > 4) {
+    r = r.substring(0, 4);
+  }
+  return r;
+}
+
+String buildWifiList() {
+  String out = "";
+  for (int i = 0; i < WIFI_SCAN_MAX; ++i) {
+    if (i < scan_count) {
+      String prefix = String(i) + ":" + scan_ssids[i];
+      if (prefix.length() > 12) {
+        prefix = prefix.substring(0, 12);
+      }
+      while (prefix.length() < 12) {
+        prefix += " ";
+      }
+      out += prefix + formatRssi(scan_rssi[i]);
+    } else {
+      out += "                ";
+    }
+  }
+  return out;
 }
 
 uint8_t header[MAXHDRLEN];
@@ -737,6 +815,106 @@ void connect() {
 void disconnect() {
   WiFi.disconnect(true);
   setSuccess("disconnected");
+}
+
+void wifi_scan() {
+  stopConfigPortal();
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(false);
+
+  scan_count = 0;
+  scan_valid = false;
+
+  int n = WiFi.scanNetworks(false, true);
+  if (n <= 0) {
+    setSuccess(buildWifiList().c_str());
+    return;
+  }
+
+  for (int i = 0; i < n; ++i) {
+    String ssid = WiFi.SSID(i);
+    int rssi = WiFi.RSSI(i);
+    if (ssid.length() == 0) {
+      continue;
+    }
+
+    int insertAt = scan_count;
+    for (int j = 0; j < scan_count; ++j) {
+      if (rssi > scan_rssi[j]) {
+        insertAt = j;
+        break;
+      }
+    }
+
+    if (insertAt >= WIFI_SCAN_MAX) {
+      continue;
+    }
+
+    int limit = min(scan_count, WIFI_SCAN_MAX - 1);
+    for (int j = limit; j > insertAt; --j) {
+      scan_ssids[j] = scan_ssids[j - 1];
+      scan_rssi[j] = scan_rssi[j - 1];
+    }
+
+    scan_ssids[insertAt] = ssid;
+    scan_rssi[insertAt] = rssi;
+    if (scan_count < WIFI_SCAN_MAX) {
+      scan_count++;
+    }
+  }
+
+  WiFi.scanDelete();
+  scan_valid = true;
+  setSuccess(buildWifiList().c_str());
+}
+
+void wifi_set() {
+  int index = (int)realArgs[0];
+
+  if (!scan_valid || index < 0 || index >= scan_count) {
+    setError("scan first");
+    return;
+  }
+
+  String passDecoded;
+  String serverDecoded;
+  String chatDecoded;
+
+  if (!decodeAlphaHex(strArgs[0], passDecoded)) {
+    setError("bad pass");
+    return;
+  }
+  if (!decodeAlphaHex(strArgs[1], serverDecoded)) {
+    setError("bad server");
+    return;
+  }
+  if (!decodeAlphaHex(strArgs[2], chatDecoded)) {
+    setError("bad chat");
+    return;
+  }
+
+  cfg_wifi_ssid = scan_ssids[index];
+  prefs.putString("wifi_ssid", cfg_wifi_ssid);
+
+  if (passDecoded.length() > 0) {
+    cfg_wifi_pass = passDecoded;
+    prefs.putString("wifi_pass", cfg_wifi_pass);
+  }
+  if (serverDecoded.length() > 0) {
+    cfg_server = serverDecoded;
+    prefs.putString("server", cfg_server);
+  }
+  if (chatDecoded.length() > 0) {
+    cfg_chat_name = chatDecoded;
+    prefs.putString("chat_name", cfg_chat_name);
+  }
+
+  if (connectToWifi(WIFI_CONNECT_TIMEOUT_MS)) {
+    setSuccess("wifi saved");
+  } else {
+    startConfigPortal();
+    setError("wifi setup");
+  }
 }
 
 void gpt() {
