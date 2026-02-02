@@ -104,8 +104,38 @@ If you change `programs/LAUNCHER.8xp`, regenerate the embedded copy and reflash 
 ./preplauncher.sh
 ```
 
-If you edit `programs/LAUNCHER.8xp.txt`, you must first re-tokenize it into a `.8xp` using an external TI-BASIC
-tool, then run `./preplauncher.sh`.
+If you edit `programs/LAUNCHER.8xp.txt`, you must first re-tokenize it into a `.8xp` (see **Editing TI-BASIC
+programs** below), then run `./preplauncher.sh`.
+
+## Editing TI-BASIC programs (.8xp <-> .txt)
+
+This repo uses **ti-tools** for reliable conversion between `.8xp` and `.txt`.
+
+Install (requires Rust):
+```
+git clone https://github.com/cqb13/ti-tools.git
+cd ti-tools
+cargo build --release
+# binary: ./target/release/ti-tools
+# or add to PATH:
+cargo install --path .
+```
+
+Examples:
+```
+ti-tools convert ./programs/LAUNCHER.8xp -o ./programs/LAUNCHER.8xp.txt
+ti-tools convert ./programs/LAUNCHER.8xp.txt -o ./programs/LAUNCHER.8xp
+```
+
+You can also use mass mode for directories:
+```
+ti-tools convert ./programs -o ./programs --mass
+```
+
+Helper wrapper:
+```
+./scripts/ti-tools-convert.sh ./programs/LAUNCHER.8xp ./programs/LAUNCHER.8xp.txt
+```
 
 ## Generating Images
 
