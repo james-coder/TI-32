@@ -142,6 +142,36 @@ Compare two `.8xp` files while ignoring the 42-byte comment field:
 ./scripts/compare-8xp.py ./programs/LAUNCHER.8xp ./programs/LAUNCHER.roundtrip.8xp
 ```
 
+### Reproducible `.8xp` Round-Trip Verification
+
+To verify that `.8xp -> .txt -> .8xp` round-tripping works (ignoring the 42-byte comment field that some tools
+rewrite), use ti-tools with a consistent display/encode pair and then compare.
+
+Recommended settings:
+- `--display-mode accessible`
+- `--encode-mode max`
+
+Steps:
+1. Convert the original `.8xp` to text:
+   ```
+   ti-tools convert ./programs/LAUNCHER.8xp -o /tmp/LAUNCHER.8xp.txt --display-mode accessible
+   ```
+2. Convert the text back to `.8xp`:
+   ```
+   ti-tools convert /tmp/LAUNCHER.8xp.txt -o /tmp/LAUNCHER.roundtrip.8xp --encode-mode max
+   ```
+3. Compare while ignoring the comment field:
+   ```
+   ./scripts/compare-8xp.py ./programs/LAUNCHER.8xp /tmp/LAUNCHER.roundtrip.8xp
+   ```
+
+Expected output:
+```
+MATCH (comment bytes ignored)
+```
+
+Note: A byte-for-byte match is not expected because the `.8xp` comment field may be rewritten by the converter.
+
 ## Generating Images
 
 To add images for the calculator:
