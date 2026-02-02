@@ -13,6 +13,8 @@
 #include <HTTPClient.h>
 #include <UrlEncode.h>
 #include <Preferences.h>
+#include <WebServer.h>
+#include <DNSServer.h>
 
 // #define CAMERA
 
@@ -33,9 +35,23 @@ constexpr auto PICSIZE = 756;
 constexpr auto PICVARSIZE = PICSIZE + 2;
 constexpr auto PASSWORD = 42069;
 constexpr auto RX_WATCHDOG_MS = 5000;
+constexpr auto WIFI_CONNECT_TIMEOUT_MS = 15000;
+constexpr auto AP_PORTAL_PORT = 80;
+constexpr auto AP_DNS_PORT = 53;
 
 CBL2 cbl;
 Preferences prefs;
+DNSServer dnsServer;
+WebServer webServer(AP_PORTAL_PORT);
+
+String cfg_wifi_ssid;
+String cfg_wifi_pass;
+String cfg_server;
+String cfg_chat_name;
+String ap_ssid;
+bool ap_mode = false;
+bool should_reboot = false;
+unsigned long reboot_at_ms = 0;
 
 // whether or not the user has entered the password
 bool unlocked = true;
@@ -114,6 +130,188 @@ int commandExpectedArgs(int cmd) {
   return -1;
 }
 
+String htmlEscape(const String& input) {
+  String out;
+  out.reserve(input.length());
+  for (size_t i = 0; i < input.length(); ++i) {
+    char c = input[i];
+    switch (c) {
+      case '&':
+        out += "&amp;";
+        break;
+      case '<':
+        out += "&lt;";
+        break;
+      case '>':
+        out += "&gt;";
+        break;
+      case '"':
+        out += "&quot;";
+        break;
+      case '\'':
+        out += "&#39;";
+        break;
+      default:
+        out += c;
+        break;
+    }
+  }
+  return out;
+}
+
+String portalPage() {
+  String page = "<!DOCTYPE html><html><head><meta charset='utf-8' />";
+  page += "<meta name='viewport' content='width=device-width, initial-scale=1' />";
+  page += "<title>TI-32 Setup</title>";
+  page += "<style>";
+  page += "body{font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;margin:24px;background:#0f172a;color:#e2e8f0;}";
+  page += "h1{font-size:20px;margin:0 0 12px 0;}";
+  page += "p{margin:0 0 12px 0;line-height:1.4;}";
+  page += "form{background:#111827;padding:16px;border-radius:12px;max-width:420px;}";
+  page += "label{display:block;margin:10px 0 4px 0;font-size:13px;color:#cbd5f5;}";
+  page += "input{width:100%;padding:10px;border-radius:8px;border:1px solid #334155;background:#0b1020;color:#e2e8f0;}";
+  page += "button{margin-top:14px;padding:10px 14px;border-radius:10px;border:0;background:#38bdf8;color:#0b1020;font-weight:600;}";
+  page += ".hint{font-size:12px;color:#94a3b8;}";
+  page += "</style></head><body>";
+  page += "<h1>TI-32 Wi-Fi Setup</h1>";
+  page += "<p>Configure Wi-Fi and server settings. After saving, the device will reboot and try to connect.</p>";
+  page += "<form method='POST' action='/save'>";
+  page += "<label>Wi-Fi SSID</label>";
+  page += "<input name='ssid' value='" + htmlEscape(cfg_wifi_ssid) + "' required />";
+  page += "<label>Wi-Fi Password</label>";
+  page += "<input name='pass' type='password' placeholder='Leave blank to keep current' />";
+  page += "<label>Server URL</label>";
+  page += "<input name='server' value='" + htmlEscape(cfg_server) + "' placeholder='http://192.168.1.50:8080' />";
+  page += "<div class='hint'>Include http:// and port if needed.</div>";
+  page += "<label>Chat Name</label>";
+  page += "<input name='chat' value='" + htmlEscape(cfg_chat_name) + "' maxlength='8' />";
+  page += "<button type='submit'>Save &amp; Reboot</button>";
+  page += "</form>";
+  page += "<p class='hint'>AP SSID: " + htmlEscape(ap_ssid) + "</p>";
+  page += "</body></html>";
+  return page;
+}
+
+void handlePortal() {
+  webServer.send(200, "text/html", portalPage());
+}
+
+void handleSave() {
+  String ssid = webServer.arg("ssid");
+  String pass = webServer.arg("pass");
+  String server = webServer.arg("server");
+  String chat = webServer.arg("chat");
+
+  ssid.trim();
+  server.trim();
+  chat.trim();
+
+  if (ssid.length() == 0) {
+    webServer.send(400, "text/plain", "SSID required");
+    return;
+  }
+
+  prefs.putString("wifi_ssid", ssid);
+  if (pass.length() > 0) {
+    prefs.putString("wifi_pass", pass);
+  }
+  if (server.length() > 0) {
+    prefs.putString("server", server);
+  }
+  if (chat.length() > 0) {
+    prefs.putString("chat_name", chat);
+  }
+
+  cfg_wifi_ssid = ssid;
+  if (pass.length() > 0) {
+    cfg_wifi_pass = pass;
+  }
+  if (server.length() > 0) {
+    cfg_server = server;
+  }
+  if (chat.length() > 0) {
+    cfg_chat_name = chat;
+  }
+
+  webServer.send(200, "text/html", "<html><body>Saved. Rebooting...</body></html>");
+  should_reboot = true;
+  reboot_at_ms = millis() + 1500;
+}
+
+void startConfigPortal() {
+  if (ap_mode) {
+    return;
+  }
+
+  WiFi.mode(WIFI_AP);
+  uint32_t chip = (uint32_t)ESP.getEfuseMac();
+  ap_ssid = String("TI-32-SETUP-") + String(chip & 0xFFFF, HEX);
+  ap_ssid.toUpperCase();
+  WiFi.softAP(ap_ssid.c_str());
+
+  IPAddress apIP = WiFi.softAPIP();
+  dnsServer.start(AP_DNS_PORT, "*", apIP);
+
+  webServer.on("/", HTTP_GET, handlePortal);
+  webServer.on("/save", HTTP_POST, handleSave);
+  webServer.on("/generate_204", HTTP_GET, handlePortal);
+  webServer.on("/hotspot-detect.html", HTTP_GET, handlePortal);
+  webServer.on("/connecttest.txt", HTTP_GET, handlePortal);
+  webServer.on("/ncsi.txt", HTTP_GET, handlePortal);
+  webServer.onNotFound(handlePortal);
+  webServer.begin();
+
+  ap_mode = true;
+  Serial.print("config portal AP: ");
+  Serial.print(ap_ssid);
+  Serial.print(" @ ");
+  Serial.println(apIP);
+}
+
+void stopConfigPortal() {
+  if (!ap_mode) {
+    return;
+  }
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  ap_mode = false;
+}
+
+void loadConfig() {
+  cfg_wifi_ssid = prefs.getString("wifi_ssid", WIFI_SSID);
+  cfg_wifi_pass = prefs.getString("wifi_pass", WIFI_PASS);
+  cfg_server = prefs.getString("server", SERVER);
+  cfg_chat_name = prefs.getString("chat_name", CHAT_NAME);
+}
+
+bool connectToWifi(unsigned long timeoutMs) {
+  if (cfg_wifi_ssid.length() == 0) {
+    Serial.println("no wifi ssid set");
+    return false;
+  }
+
+  stopConfigPortal();
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.begin(cfg_wifi_ssid.c_str(), cfg_wifi_pass.c_str());
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+    delay(200);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("connected, ip: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  }
+
+  Serial.print("wifi connect failed: ");
+  Serial.println(WiFi.status());
+  return false;
+}
+
 uint8_t header[MAXHDRLEN];
 uint8_t data[MAXDATALEN];
 
@@ -186,7 +384,7 @@ void setup() {
   Serial.print("reboots: ");
   Serial.println(reboots);
   prefs.putUInt("boots", reboots + 1);
-  prefs.end();
+  loadConfig();
 
 #ifdef CAMERA
   Serial.println("[camera]");
@@ -259,6 +457,10 @@ void setup() {
   memset(data, 0, MAXDATALEN);
   memset(header, 0, 16);
   Serial.println("[ready]");
+
+  if (!connectToWifi(WIFI_CONNECT_TIMEOUT_MS)) {
+    startConfigPortal();
+  }
 }
 
 void (*queued_action)() = NULL;
@@ -273,6 +475,13 @@ void loop() {
     void (*tmp)() = queued_action;
     queued_action = NULL;
     tmp();
+  }
+  if (ap_mode) {
+    dnsServer.processNextRequest();
+    webServer.handleClient();
+  }
+  if (should_reboot && millis() > reboot_at_ms) {
+    ESP.restart();
   }
   if (command >= 0 && command <= MAXCOMMAND) {
     const int expectedArgs = commandExpectedArgs(command);
@@ -488,20 +697,16 @@ int makeRequest(String url, char* result, int resultLen, size_t* len) {
 }
 
 void connect() {
-  const char* ssid = WIFI_SSID;
-  const char* pass = WIFI_PASS;
   Serial.print("SSID: ");
-  Serial.println(ssid);
+  Serial.println(cfg_wifi_ssid);
   Serial.print("PASS: ");
   Serial.println("<hidden>");
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    if (WiFi.status() == WL_CONNECT_FAILED) {
-      setError("failed to connect");
-      return;
-    }
+  if (connectToWifi(WIFI_CONNECT_TIMEOUT_MS)) {
+    setSuccess("connected");
+  } else {
+    startConfigPortal();
+    setError("wifi setup");
   }
-  setSuccess("connected");
 }
 
 void disconnect() {
@@ -514,7 +719,7 @@ void gpt() {
   Serial.print("prompt: ");
   Serial.println(prompt);
 
-  auto url = String(SERVER) + String("/gpt/ask?question=") + urlEncode(String(prompt));
+  auto url = String(cfg_server) + String("/gpt/ask?question=") + urlEncode(String(prompt));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXHTTPRESPONSELEN, &realsize)) {
@@ -572,7 +777,7 @@ void solve() {
 
 void image_list() {
   int page = realArgs[0];
-  auto url = String(SERVER) + String("/image/list?p=") + urlEncode(String(page));
+  auto url = String(cfg_server) + String("/image/list?p=") + urlEncode(String(page));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXSTRARGLEN, &realsize)) {
@@ -593,7 +798,7 @@ void fetch_image() {
   Serial.print("id: ");
   Serial.println(id);
 
-  auto url = String(SERVER) + String("/image/get?id=") + urlEncode(String(id));
+  auto url = String(cfg_server) + String("/image/get?id=") + urlEncode(String(id));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXHTTPRESPONSELEN, &realsize)) {
@@ -619,7 +824,7 @@ void fetch_image() {
 void fetch_chats() {
   int room = realArgs[0];
   int page = realArgs[1];
-  auto url = String(SERVER) + String("/chats/messages?p=") + urlEncode(String(page)) + String("&c=") + urlEncode(String(room));
+  auto url = String(cfg_server) + String("/chats/messages?p=") + urlEncode(String(page)) + String("&c=") + urlEncode(String(room));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXSTRARGLEN, &realsize)) {
@@ -637,7 +842,7 @@ void send_chat() {
   int room = realArgs[0];
   const char* msg = strArgs[1];
 
-  auto url = String(SERVER) + String("/chats/send?c=") + urlEncode(String(room)) + String("&m=") + urlEncode(String(msg)) + String("&id=") + urlEncode(String(CHAT_NAME));
+  auto url = String(cfg_server) + String("/chats/send?c=") + urlEncode(String(room)) + String("&m=") + urlEncode(String(msg)) + String("&id=") + urlEncode(String(cfg_chat_name));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXSTRARGLEN, &realsize)) {
@@ -653,7 +858,7 @@ void send_chat() {
 
 void program_list() {
   int page = realArgs[0];
-  auto url = String(SERVER) + String("/programs/list?p=") + urlEncode(String(page));
+  auto url = String(cfg_server) + String("/programs/list?p=") + urlEncode(String(page));
 
   size_t realsize = 0;
   if (makeRequest(url, response, MAXSTRARGLEN, &realsize)) {
@@ -696,7 +901,7 @@ void fetch_program() {
 
   _resetProgram();
 
-  auto url = String(SERVER) + String("/programs/get?id=") + urlEncode(String(id));
+  auto url = String(cfg_server) + String("/programs/get?id=") + urlEncode(String(id));
 
   if (makeRequest(url, programData, 4096, &programLength)) {
     setError("error making request for program data");
@@ -704,7 +909,7 @@ void fetch_program() {
   }
 
   size_t realsize = 0;
-  auto nameUrl = String(SERVER) + String("/programs/get_name?id=") + urlEncode(String(id));
+  auto nameUrl = String(cfg_server) + String("/programs/get_name?id=") + urlEncode(String(id));
   if (makeRequest(nameUrl, programName, 256, &realsize)) {
     setError("error making request for program name");
     return;

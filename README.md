@@ -53,6 +53,12 @@ Steps:
 2. Open `esp32/esp32.ino` and select the board (the PCB uses **Seeeduino XIAO ESP32C3**).
 3. Compile and flash.
 
+#### Wi-Fi setup portal (SoftAP)
+
+On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or prior setup).
+If it can’t connect, it starts a SoftAP named `TI-32-SETUP-XXXX` and launches a captive portal.
+On most Android/iOS phones the portal opens automatically. If not, browse to `http://192.168.4.1`.
+
 ### 2) Run the server (local machine)
 
 Prereqs:
