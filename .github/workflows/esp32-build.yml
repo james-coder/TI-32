@@ -30,5 +30,11 @@ jobs:
           arduino-cli lib install "UrlEncode"
           arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
 
+      - name: Ensure secrets.h exists
+        run: |
+          if [ ! -f esp32/secrets.h ]; then
+            cp esp32/secrets.h.example esp32/secrets.h
+          fi
+
       - name: Compile sketch
         run: arduino-cli compile --fqbn "$FQBN" esp32
