@@ -51,6 +51,10 @@ Steps:
    - `SERVER` (example: `http://192.168.1.50:8080`)
    - `CHAT_NAME` (short ID shown in chat)
 2. Open `esp32/esp32.ino` and select the board (the PCB uses **Seeeduino XIAO ESP32C3**).
+   You can purchase the Seeed Studio XIAO ESP32C3 here:
+   ```
+   https://amzn.to/3NTeTG5
+   ```
 3. Compile and flash.
 
 #### Flashing a stock Seeeduino XIAO ESP32C3
