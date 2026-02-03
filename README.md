@@ -55,6 +55,27 @@ Steps:
 
 #### Flashing a stock Seeeduino XIAO ESP32C3
 
+#### Installing Arduino CLI
+
+macOS/Linux (Homebrew):
+```
+brew update
+brew install arduino-cli
+```
+
+macOS/Linux (install script):
+```
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+```
+To install into a specific directory:
+```
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=~/local/bin sh
+```
+
+Windows:
+- Download a prebuilt Arduino CLI binary from the official releases page and add it to your `PATH`.
+- If you want to use the install script on Windows, run it from Git Bash.
+
 Arduino IDE:
 1. Install the ESP32 board package.
 2. Select board: `XIAO_ESP32C3`.
