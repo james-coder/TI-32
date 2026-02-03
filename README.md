@@ -106,10 +106,32 @@ If upload fails, recheck the port and put the board in bootloader mode, then try
 The GitHub Action uploads a build artifact named `esp32-build` that contains the compiled binaries.
 You can download it from the Actions run summary.
 
+#### Web flasher (Netlify)
+
+This repo includes a static web flasher in `web-flasher/` built on ESP Web Tools. It uses Web Serial
+in Chromium-based browsers to flash a stock Seeeduino XIAO ESP32C3.
+
+Quick setup:
+1. Put firmware binaries in `web-flasher/firmware/` as:
+   - `bootloader.bin`
+   - `partitions.bin`
+   - `firmware.bin`
+2. Confirm `web-flasher/manifest.json` points to those files.
+3. Deploy the folder with Netlify (publish directory: `web-flasher`).
+
+Optional helper to build + copy from Arduino CLI output:
+```
+./scripts/prepare-web-flasher.sh
+```
+
+Notes:
+- Requires Chrome/Edge with Web Serial.
+- To enter bootloader mode: hold **BOOT**, tap **RESET**, then release **BOOT**.
+
 #### Wi-Fi setup portal (SoftAP)
 
 On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or prior setup).
-If it can’t connect, it starts a SoftAP named `TI-32-SETUP-XXXX` and launches a captive portal.
+If it can't connect, it starts a SoftAP named `TI-32-SETUP-XXXX` and launches a captive portal.
 On most Android/iOS phones the portal opens automatically. If not, browse to `http://192.168.4.1`.
 The portal lists nearby access points (tap to fill SSID) and lets you enter credentials.
 
