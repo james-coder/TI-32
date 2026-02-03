@@ -101,6 +101,9 @@ String scan_ssids[WIFI_SCAN_MAX];
 int scan_rssi[WIFI_SCAN_MAX];
 int scan_count = 0;
 bool scan_valid = false;
+String portal_scan_ssids[WIFI_SCAN_MAX];
+int portal_scan_rssi[WIFI_SCAN_MAX];
+int portal_scan_count = 0;
 
 void connect();
 void disconnect();
@@ -185,25 +188,84 @@ String htmlEscape(const String& input) {
   return out;
 }
 
+int rssiPercent(int rssi) {
+  if (rssi <= -100) {
+    return 0;
+  }
+  if (rssi >= -50) {
+    return 100;
+  }
+  return (rssi + 100) * 2;
+}
+
+String portalNetworkListHtml() {
+  String list = "";
+  if (portal_scan_count == 0) {
+    list += "<div class='empty'>No networks found. Tap Rescan.</div>";
+    return list;
+  }
+
+  list += "<div class='networks'>";
+  for (int i = 0; i < portal_scan_count; ++i) {
+    String ssid = portal_scan_ssids[i];
+    String display = ssid;
+    if (display.length() > 24) {
+      display = display.substring(0, 21) + "...";
+    }
+    int percent = rssiPercent(portal_scan_rssi[i]);
+    list += "<button type='button' class='net' data-ssid=\"" + htmlEscape(ssid) + "\">";
+    list += "<div class='net-main'>";
+    list += "<div class='net-name'>" + htmlEscape(display) + "</div>";
+    list += "<div class='net-rssi'>" + formatRssi(portal_scan_rssi[i]) + " dBm</div>";
+    list += "</div>";
+    list += "<div class='signal'><span style='width:" + String(percent) + "%'></span></div>";
+    list += "</button>";
+  }
+  list += "</div>";
+  return list;
+}
+
 String portalPage() {
   String page = "<!DOCTYPE html><html><head><meta charset='utf-8' />";
   page += "<meta name='viewport' content='width=device-width, initial-scale=1' />";
   page += "<title>TI-32 Setup</title>";
   page += "<style>";
-  page += "body{font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;margin:24px;background:#0f172a;color:#e2e8f0;}";
-  page += "h1{font-size:20px;margin:0 0 12px 0;}";
-  page += "p{margin:0 0 12px 0;line-height:1.4;}";
-  page += "form{background:#111827;padding:16px;border-radius:12px;max-width:420px;}";
-  page += "label{display:block;margin:10px 0 4px 0;font-size:13px;color:#cbd5f5;}";
-  page += "input{width:100%;padding:10px;border-radius:8px;border:1px solid #334155;background:#0b1020;color:#e2e8f0;}";
-  page += "button{margin-top:14px;padding:10px 14px;border-radius:10px;border:0;background:#38bdf8;color:#0b1020;font-weight:600;}";
-  page += ".hint{font-size:12px;color:#94a3b8;}";
+  page += "body{font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0;}";
+  page += ".wrap{max-width:480px;margin:0 auto;padding:24px 18px 32px 18px;}";
+  page += "h1{font-size:20px;margin:0 0 10px 0;}";
+  page += "p{margin:0 0 12px 0;line-height:1.4;color:#cbd5f5;}";
+  page += ".card{background:#111827;padding:16px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,0.25);}";
+  page += "label{display:block;margin:12px 0 4px 0;font-size:13px;color:#cbd5f5;}";
+  page += "input{width:100%;padding:11px;border-radius:10px;border:1px solid #334155;background:#0b1020;color:#e2e8f0;}";
+  page += ".actions{display:flex;gap:10px;align-items:center;margin-top:14px;}";
+  page += "button.primary{flex:1;padding:12px 14px;border-radius:10px;border:0;background:#38bdf8;color:#0b1020;font-weight:600;}";
+  page += "a.rescan{padding:10px 12px;border-radius:10px;border:1px solid #334155;color:#e2e8f0;text-decoration:none;font-size:13px;}";
+  page += ".hint{font-size:12px;color:#94a3b8;margin-top:8px;}";
+  page += ".section-title{margin:18px 0 10px 0;font-size:14px;color:#cbd5f5;}";
+  page += ".networks{display:flex;flex-direction:column;gap:10px;}";
+  page += ".net{display:flex;flex-direction:column;gap:6px;text-align:left;padding:12px;border-radius:12px;border:1px solid #1f2a44;background:#0b1222;color:#e2e8f0;}";
+  page += ".net:hover{border-color:#38bdf8;}";
+  page += ".net-main{display:flex;justify-content:space-between;gap:12px;}";
+  page += ".net-name{font-weight:600;font-size:14px;}";
+  page += ".net-rssi{font-size:12px;color:#94a3b8;}";
+  page += ".signal{height:6px;background:#111827;border-radius:999px;overflow:hidden;border:1px solid #1f2a44;}";
+  page += ".signal span{display:block;height:100%;background:linear-gradient(90deg,#34d399,#38bdf8);}";
+  page += ".empty{font-size:13px;color:#94a3b8;}";
   page += "</style></head><body>";
+  page += "<div class='wrap'>";
   page += "<h1>TI-32 Wi-Fi Setup</h1>";
   page += "<p>Configure Wi-Fi and server settings. After saving, the device will reboot and try to connect.</p>";
+  page += "<div class='card'>";
+  page += "<div class='section-title'>Nearby Wi-Fi</div>";
+  page += "<div class='actions'>";
+  page += "<a class='rescan' href='/scan'>Rescan</a>";
+  page += "<div class='hint'>Tap a network to fill SSID.</div>";
+  page += "</div>";
+  page += portalNetworkListHtml();
+  page += "<div class='section-title'>Settings</div>";
   page += "<form method='POST' action='/save'>";
   page += "<label>Wi-Fi SSID</label>";
-  page += "<input name='ssid' value='" + htmlEscape(cfg_wifi_ssid) + "' required />";
+  page += "<input id='ssid' name='ssid' value='" + htmlEscape(cfg_wifi_ssid) + "' required />";
   page += "<label>Wi-Fi Password</label>";
   page += "<input name='pass' type='password' placeholder='Leave blank to keep current' />";
   page += "<label>Server URL</label>";
@@ -211,15 +273,70 @@ String portalPage() {
   page += "<div class='hint'>Include http:// and port if needed.</div>";
   page += "<label>Chat Name</label>";
   page += "<input name='chat' value='" + htmlEscape(cfg_chat_name) + "' maxlength='8' />";
-  page += "<button type='submit'>Save &amp; Reboot</button>";
+  page += "<button class='primary' type='submit'>Save &amp; Reboot</button>";
   page += "</form>";
-  page += "<p class='hint'>AP SSID: " + htmlEscape(ap_ssid) + "</p>";
+  page += "<div class='hint'>Hidden SSID? Enter it manually above.</div>";
+  page += "<div class='hint'>AP SSID: " + htmlEscape(ap_ssid) + "</div>";
+  page += "</div>";
+  page += "<script>";
+  page += "const ssidInput=document.getElementById('ssid');";
+  page += "document.querySelectorAll('.net').forEach((btn)=>{btn.addEventListener('click',()=>{ssidInput.value=btn.dataset.ssid;ssidInput.focus();});});";
+  page += "</script>";
+  page += "</div>";
   page += "</body></html>";
   return page;
 }
 
 void handlePortal() {
   webServer.send(200, "text/html", portalPage());
+}
+
+void portalScanNetworks() {
+  portal_scan_count = 0;
+  int n = WiFi.scanNetworks(false, true);
+  if (n <= 0) {
+    return;
+  }
+
+  for (int i = 0; i < n; ++i) {
+    String ssid = WiFi.SSID(i);
+    int rssi = WiFi.RSSI(i);
+    if (ssid.length() == 0) {
+      continue;
+    }
+
+    int insertAt = portal_scan_count;
+    for (int j = 0; j < portal_scan_count; ++j) {
+      if (rssi > portal_scan_rssi[j]) {
+        insertAt = j;
+        break;
+      }
+    }
+
+    if (insertAt >= WIFI_SCAN_MAX) {
+      continue;
+    }
+
+    int limit = min(portal_scan_count, WIFI_SCAN_MAX - 1);
+    for (int j = limit; j > insertAt; --j) {
+      portal_scan_ssids[j] = portal_scan_ssids[j - 1];
+      portal_scan_rssi[j] = portal_scan_rssi[j - 1];
+    }
+
+    portal_scan_ssids[insertAt] = ssid;
+    portal_scan_rssi[insertAt] = rssi;
+    if (portal_scan_count < WIFI_SCAN_MAX) {
+      portal_scan_count++;
+    }
+  }
+
+  WiFi.scanDelete();
+}
+
+void handleScan() {
+  portalScanNetworks();
+  webServer.sendHeader("Location", "/");
+  webServer.send(302, "text/plain", "OK");
 }
 
 void handleSave() {
@@ -269,7 +386,7 @@ void startConfigPortal() {
     return;
   }
 
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
   uint32_t chip = (uint32_t)ESP.getEfuseMac();
   ap_ssid = String("TI-32-SETUP-") + String(chip & 0xFFFF, HEX);
   ap_ssid.toUpperCase();
@@ -280,11 +397,13 @@ void startConfigPortal() {
 
   webServer.on("/", HTTP_GET, handlePortal);
   webServer.on("/save", HTTP_POST, handleSave);
+  webServer.on("/scan", HTTP_GET, handleScan);
   webServer.on("/generate_204", HTTP_GET, handlePortal);
   webServer.on("/hotspot-detect.html", HTTP_GET, handlePortal);
   webServer.on("/connecttest.txt", HTTP_GET, handlePortal);
   webServer.on("/ncsi.txt", HTTP_GET, handlePortal);
   webServer.onNotFound(handlePortal);
+  portalScanNetworks();
   webServer.begin();
 
   ap_mode = true;

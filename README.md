@@ -111,6 +111,7 @@ You can download it from the Actions run summary.
 On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or prior setup).
 If it can’t connect, it starts a SoftAP named `TI-32-SETUP-XXXX` and launches a captive portal.
 On most Android/iOS phones the portal opens automatically. If not, browse to `http://192.168.4.1`.
+The portal lists nearby access points (tap to fill SSID) and lets you enter credentials.
 
 #### Power management (light sleep)
 
@@ -250,8 +251,8 @@ the core TI-32 flow and should be considered experimental.
 
 ## Features to be Added
 
-- Change Wi-Fi settings directly from calculator
-- Watchdog when receiving items
+- Change Wi-Fi settings directly from calculator (PENDING TESTING)
+- Watchdog when receiving items (PENDING TESTING)
 - Support for color images
 - Action text during waiting phase
 - Support for multi-page response from GPT
