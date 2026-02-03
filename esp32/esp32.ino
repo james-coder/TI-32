@@ -603,7 +603,7 @@ void loop() {
 
 #if POWER_MGMT_ENABLED
   if (!ap_mode && command == -1 && queued_action == NULL) {
-      if (millis() - last_activity_ms > LIGHT_SLEEP_IDLE_MS) {
+    if (millis() - last_activity_ms > LIGHT_SLEEP_IDLE_MS) {
       gpio_wakeup_enable((gpio_num_t)TIP, GPIO_WAKE_LEVEL);
       gpio_wakeup_enable((gpio_num_t)RING, GPIO_WAKE_LEVEL);
       esp_sleep_enable_gpio_wakeup();
