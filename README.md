@@ -128,6 +128,10 @@ Notes:
 - Requires Chrome/Edge with Web Serial.
 - To enter bootloader mode: hold **BOOT**, tap **RESET**, then release **BOOT**.
 
+Release deploy (optional):
+- The workflow `.github/workflows/netlify-release.yml` deploys the web flasher on GitHub Release publish.
+- Configure repo secrets: `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`.
+
 #### Wi-Fi setup portal (SoftAP)
 
 On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or prior setup).
