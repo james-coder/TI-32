@@ -22,11 +22,13 @@ export async function chatgpt() {
           {
             role: "system",
             content:
-              "You are answering questions for students. Keep responses under 100 characters and only answer using uppercase letters.",
+              "You are answering questions for a TI-84 Plus display (16x8). Reply in 128 characters or fewer. Use only uppercase letters A-Z, digits 0-9, spaces, and the symbols: + - * / ^ = ( ) . , : ;",
           },
           { role: "user", content: question },
         ],
         model: "gpt-4o-mini",
+        max_tokens: 64,
+        temperature: 0.2,
       });
 
       res.send(result.choices[0]?.message?.content ?? "no response");
@@ -45,6 +47,7 @@ export async function chatgpt() {
       if (contentType !== "image/jpg") {
         res.status(400);
         res.send(`bad content-type: ${contentType}`);
+        return;
       }
 
       const image_data = await new Promise((resolve, reject) => {

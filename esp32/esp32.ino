@@ -42,8 +42,11 @@ constexpr auto AP_PORTAL_PORT = 80;
 constexpr auto AP_DNS_PORT = 53;
 constexpr auto LIGHT_SLEEP_IDLE_MS = 2000;
 constexpr auto WIFI_SCAN_MAX = 4;
+constexpr auto GPT_MAX_CHARS = 128;
 const char WIFI_ALPHA[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.:/!?";
 constexpr int WIFI_ALPHA_LEN = sizeof(WIFI_ALPHA) - 1;
+const char GPT_ALLOWED[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 +-*/^=().,:;";
+constexpr int GPT_ALLOWED_LEN = sizeof(GPT_ALLOWED) - 1;
 #ifdef GPIO_INTR_LOW_LEVEL
 constexpr gpio_int_type_t GPIO_WAKE_LEVEL = GPIO_INTR_LOW_LEVEL;
 #elif defined(GPIO_INTR_LOW)
@@ -524,6 +527,58 @@ String buildWifiList() {
   return out;
 }
 
+bool ensureNullTerminated(char* buffer, size_t len, size_t capacity) {
+  if (capacity == 0) {
+    return false;
+  }
+  if (len >= capacity) {
+    return false;
+  }
+  buffer[len] = '\0';
+  return true;
+}
+
+bool isAllowedGptChar(char c) {
+  for (int i = 0; i < GPT_ALLOWED_LEN; ++i) {
+    if (c == GPT_ALLOWED[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void sanitizeGptResponse(const char* input, char* output, size_t outputLen) {
+  if (outputLen == 0) {
+    return;
+  }
+
+  const size_t maxOut = (outputLen - 1 < (size_t)GPT_MAX_CHARS) ? (outputLen - 1) : (size_t)GPT_MAX_CHARS;
+  size_t out = 0;
+
+  for (size_t i = 0; input[i] != '\0' && out < maxOut; ++i) {
+    char c = input[i];
+    if (c == '\n' || c == '\r' || c == '\t') {
+      c = ' ';
+    }
+    if (c >= 'a' && c <= 'z') {
+      c = char(c - 'a' + 'A');
+    }
+    if (!isAllowedGptChar(c)) {
+      continue;
+    }
+    output[out++] = c;
+  }
+
+  if (out == 0) {
+    const char* fallback = "NO RESPONSE";
+    for (size_t i = 0; fallback[i] != '\0' && out < maxOut; ++i) {
+      output[out++] = fallback[i];
+    }
+  }
+
+  output[out] = '\0';
+}
+
 uint8_t header[MAXHDRLEN];
 uint8_t data[MAXDATALEN];
 
@@ -554,7 +609,8 @@ void startCommand(int cmd) {
     memset(&strArgs[i], 0, MAXSTRARGLEN);
     realArgs[i] = 0;
   }
-  strncpy(message, "no command", MAXSTRARGLEN);
+  strncpy(message, "no command", MAXSTRARGLEN - 1);
+  message[MAXSTRARGLEN - 1] = '\0';
 }
 
 void setError(const char* err) {
@@ -563,7 +619,8 @@ void setError(const char* err) {
   error = 1;
   status = 1;
   command = -1;
-  strncpy(message, err, MAXSTRARGLEN);
+  strncpy(message, err, MAXSTRARGLEN - 1);
+  message[MAXSTRARGLEN - 1] = '\0';
 }
 
 void setSuccess(const char* success) {
@@ -572,7 +629,8 @@ void setSuccess(const char* success) {
   error = 0;
   status = 1;
   command = -1;
-  strncpy(message, success, MAXSTRARGLEN);
+  strncpy(message, success, MAXSTRARGLEN - 1);
+  message[MAXSTRARGLEN - 1] = '\0';
 }
 
 int sendProgramVariable(const char* name, uint8_t* program, size_t variableSize);
@@ -878,7 +936,11 @@ int onRequest(uint8_t type, enum Endpoint model, int* headerlen, int* datalen, d
 }
 
 int makeRequest(String url, char* result, int resultLen, size_t* len) {
+  if (resultLen <= 0) {
+    return -1;
+  }
   memset(result, 0, resultLen);
+  *len = 0;
 
 #ifdef SECURE
   WiFiClientSecure client;
@@ -890,7 +952,9 @@ int makeRequest(String url, char* result, int resultLen, size_t* len) {
   http.setAuthorization(HTTP_USERNAME, HTTP_PASSWORD);
 
   Serial.println(url);
-  http.begin(client, url.c_str());
+  if (!http.begin(client, url.c_str())) {
+    return -1;
+  }
 
   // Send HTTP GET request
   int httpResponseCode = http.GET();
@@ -898,29 +962,62 @@ int makeRequest(String url, char* result, int resultLen, size_t* len) {
   Serial.print(" ");
   Serial.println(httpResponseCode);
 
+  if (httpResponseCode != 200) {
+    http.end();
+    return httpResponseCode;
+  }
+
   int responseSize = http.getSize();
   WiFiClient* httpStream = http.getStreamPtr();
 
   Serial.print("response size: ");
   Serial.println(responseSize);
 
-  if (httpResponseCode != 200) {
-    return httpResponseCode;
-  }
-
-  if (httpStream->available() > resultLen) {
+  if (responseSize > 0 && responseSize > resultLen) {
     Serial.print("response size: ");
-    Serial.print(httpStream->available());
+    Serial.print(responseSize);
     Serial.println(" is too big");
+    http.end();
     return -1;
   }
 
-  while (httpStream->available()) {
-    *(result++) = httpStream->read();
+  int total = 0;
+  unsigned long lastRead = millis();
+  while (http.connected()) {
+    size_t available = httpStream->available();
+    if (available) {
+      int remaining = resultLen - total;
+      if (remaining <= 0) {
+        http.end();
+        return -1;
+      }
+      int toRead = available > (size_t)remaining ? remaining : (int)available;
+      int readCount = httpStream->readBytes((uint8_t*)result + total, toRead);
+      total += readCount;
+      lastRead = millis();
+      if (responseSize > 0 && total >= responseSize) {
+        break;
+      }
+    } else {
+      if (responseSize > 0 && total >= responseSize) {
+        break;
+      }
+      if (millis() - lastRead > 2000) {
+        break;
+      }
+      delay(1);
+    }
   }
-  *len = responseSize;
 
+  *len = total;
+  if (total < resultLen) {
+    result[total] = '\0';
+  }
   http.end();
+
+  if (responseSize > 0 && total < responseSize) {
+    return -1;
+  }
 
   return 0;
 }
@@ -1055,11 +1152,17 @@ void gpt() {
     setError("error making request");
     return;
   }
+  if (!ensureNullTerminated(response, realsize, MAXHTTPRESPONSELEN)) {
+    setError("response too long");
+    return;
+  }
 
   Serial.print("response: ");
   Serial.println(response);
 
-  setSuccess(response);
+  char filtered[MAXSTRARGLEN];
+  sanitizeGptResponse(response, filtered, sizeof(filtered));
+  setSuccess(filtered);
 }
 
 void send() {
@@ -1113,6 +1216,10 @@ void image_list() {
     setError("error making request");
     return;
   }
+  if (!ensureNullTerminated(response, realsize, MAXSTRARGLEN)) {
+    setError("response too long");
+    return;
+  }
 
   Serial.print("response: ");
   Serial.println(response);
@@ -1160,6 +1267,10 @@ void fetch_chats() {
     setError("error making request");
     return;
   }
+  if (!ensureNullTerminated(response, realsize, MAXSTRARGLEN)) {
+    setError("response too long");
+    return;
+  }
 
   Serial.print("response: ");
   Serial.println(response);
@@ -1178,6 +1289,10 @@ void send_chat() {
     setError("error making request");
     return;
   }
+  if (!ensureNullTerminated(response, realsize, MAXSTRARGLEN)) {
+    setError("response too long");
+    return;
+  }
 
   Serial.print("response: ");
   Serial.println(response);
@@ -1192,6 +1307,10 @@ void program_list() {
   size_t realsize = 0;
   if (makeRequest(url, response, MAXSTRARGLEN, &realsize)) {
     setError("error making request");
+    return;
+  }
+  if (!ensureNullTerminated(response, realsize, MAXSTRARGLEN)) {
+    setError("response too long");
     return;
   }
 
@@ -1241,6 +1360,10 @@ void fetch_program() {
   auto nameUrl = String(cfg_server) + String("/programs/get_name?id=") + urlEncode(String(id));
   if (makeRequest(nameUrl, programName, 256, &realsize)) {
     setError("error making request for program name");
+    return;
+  }
+  if (!ensureNullTerminated(programName, realsize, sizeof(programName))) {
+    setError("program name too long");
     return;
   }
 
