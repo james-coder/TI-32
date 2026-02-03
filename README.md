@@ -132,9 +132,10 @@ Notes:
 - Requires Chrome/Edge with Web Serial.
 - To enter bootloader mode: hold **BOOT**, tap **RESET**, then release **BOOT**.
 
-Release deploy (optional):
-- The workflow `.github/workflows/netlify-release.yml` deploys the web flasher on GitHub Release publish.
-- Configure repo secrets: `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`.
+Release update (optional):
+- The workflow `.github/workflows/web-flasher-release.yml` builds firmware on GitHub Release publish.
+- It commits the latest firmware binaries + manifest version into `web-flasher/`, so Netlify (Git-connected)
+  serves the current release without any Netlify credentials.
 
 #### Wi-Fi setup portal (SoftAP)
 

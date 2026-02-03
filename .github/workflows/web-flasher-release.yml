@@ -1,0 +1,108 @@
+name: web-flasher-release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FQBN: esp32:esp32:XIAO_ESP32C3
+      ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init --additional-urls "$ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS"
+          arduino-cli config set library.enable_unsafe_install true
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "UrlEncode"
+          arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
+
+      - name: Determine release tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$RELEASE_TAG"
+          if [ -n "$INPUT_TAG" ]; then
+            tag="$INPUT_TAG"
+          fi
+          if [ -z "$tag" ]; then
+            tag=$(git describe --tags --abbrev=0)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build from tag
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          git checkout "refs/tags/$tag"
+          if [ ! -f esp32/secrets.h ]; then
+            cp esp32/secrets.h.example esp32/secrets.h
+          fi
+          arduino-cli compile --fqbn "$FQBN" --output-dir /tmp/ti32-build esp32
+
+      - name: Prepare web flasher firmware
+        run: |
+          mkdir -p /tmp/ti32-webflash
+          bootloader=$(ls -1 /tmp/ti32-build/*.bootloader.bin 2>/dev/null | head -n1 || true)
+          partitions=$(ls -1 /tmp/ti32-build/*.partitions.bin 2>/dev/null | head -n1 || true)
+          app=$(ls -1 /tmp/ti32-build/*.bin 2>/dev/null | grep -v -E '(bootloader|partitions)' | head -n1 || true)
+
+          if [[ -z "$bootloader" || -z "$partitions" || -z "$app" ]]; then
+            echo "Missing firmware outputs in /tmp/ti32-build" >&2
+            exit 2
+          fi
+
+          cp "$bootloader" /tmp/ti32-webflash/bootloader.bin
+          cp "$partitions" /tmp/ti32-webflash/partitions.bin
+          cp "$app" /tmp/ti32-webflash/firmware.bin
+
+      - name: Update repo web flasher
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          git checkout "$DEFAULT_BRANCH"
+          mkdir -p web-flasher/firmware
+          cp /tmp/ti32-webflash/bootloader.bin web-flasher/firmware/bootloader.bin
+          cp /tmp/ti32-webflash/partitions.bin web-flasher/firmware/partitions.bin
+          cp /tmp/ti32-webflash/firmware.bin web-flasher/firmware/firmware.bin
+
+          node -e "const fs=require('fs');const path='web-flasher/manifest.json';const raw=fs.readFileSync(path,'utf8');const data=JSON.parse(raw);data.version='${tag}';fs.writeFileSync(path, JSON.stringify(data, null, 2));"
+
+      - name: Commit and push
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add web-flasher/firmware web-flasher/manifest.json
+          git commit -m "Update web flasher firmware" -m "Release: ${{ steps.tag.outputs.tag }}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
