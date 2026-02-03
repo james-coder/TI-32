@@ -44,6 +44,13 @@ constexpr auto LIGHT_SLEEP_IDLE_MS = 2000;
 constexpr auto WIFI_SCAN_MAX = 4;
 const char WIFI_ALPHA[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.:/!?";
 constexpr int WIFI_ALPHA_LEN = sizeof(WIFI_ALPHA) - 1;
+#ifdef GPIO_INTR_LOW_LEVEL
+constexpr gpio_int_type_t GPIO_WAKE_LEVEL = GPIO_INTR_LOW_LEVEL;
+#elif defined(GPIO_INTR_LOW)
+constexpr gpio_int_type_t GPIO_WAKE_LEVEL = GPIO_INTR_LOW;
+#else
+constexpr gpio_int_type_t GPIO_WAKE_LEVEL = GPIO_INTR_HIGH_LEVEL;
+#endif
 
 #ifndef POWER_MGMT_ENABLED
 #define POWER_MGMT_ENABLED 1
@@ -596,9 +603,9 @@ void loop() {
 
 #if POWER_MGMT_ENABLED
   if (!ap_mode && command == -1 && queued_action == NULL) {
-    if (millis() - last_activity_ms > LIGHT_SLEEP_IDLE_MS) {
-      gpio_wakeup_enable((gpio_num_t)TIP, GPIO_INTR_LOW);
-      gpio_wakeup_enable((gpio_num_t)RING, GPIO_INTR_LOW);
+      if (millis() - last_activity_ms > LIGHT_SLEEP_IDLE_MS) {
+      gpio_wakeup_enable((gpio_num_t)TIP, GPIO_WAKE_LEVEL);
+      gpio_wakeup_enable((gpio_num_t)RING, GPIO_WAKE_LEVEL);
       esp_sleep_enable_gpio_wakeup();
       Serial.flush();
       esp_light_sleep_start();
