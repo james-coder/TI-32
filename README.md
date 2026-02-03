@@ -73,7 +73,11 @@ curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.
 ```
 
 Windows:
-- Download a prebuilt Arduino CLI binary from the official releases page and add it to your `PATH`.
+- Download a prebuilt Arduino CLI binary from the official **Latest release** section and add it to your `PATH`.
+- Reference:
+  ```
+  https://docs.arduino.cc/arduino-cli/installation/#latest-release
+  ```
 - If you want to use the install script on Windows, run it from Git Bash.
 
 Arduino IDE:
