@@ -1,6 +1,6 @@
 # TI-32
 
-TI-32 is a hardware + firmware + server project that adds Wi-Fi-backed features to TI-83+/84+ calculators.
+TI-32 is a hardware + firmware + server enhancement for TI-84+ calculators that adds Wi-Fi-backed features.
 An ESP32 board connects to the calculator link port, speaks the TI link protocol, and proxies requests to a local
 server for GPT, images, and program downloads.
 
