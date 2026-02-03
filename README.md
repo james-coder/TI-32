@@ -53,6 +53,34 @@ Steps:
 2. Open `esp32/esp32.ino` and select the board (the PCB uses **Seeeduino XIAO ESP32C3**).
 3. Compile and flash.
 
+#### Flashing a stock Seeeduino XIAO ESP32C3
+
+Arduino IDE:
+1. Install the ESP32 board package.
+2. Select board: `XIAO_ESP32C3`.
+3. Select the correct serial port.
+4. Click **Upload**.
+
+Arduino CLI:
+```
+arduino-cli core install esp32:esp32
+arduino-cli lib install "UrlEncode"
+arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
+
+cp esp32/secrets.h.example esp32/secrets.h
+# edit esp32/secrets.h before uploading
+
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 esp32
+arduino-cli upload -p /dev/ttyACM0 --fqbn esp32:esp32:XIAO_ESP32C3 esp32
+```
+
+If upload fails, recheck the port and put the board in bootloader mode, then try again.
+
+#### CI build artifacts
+
+The GitHub Action uploads a build artifact named `esp32-build` that contains the compiled binaries.
+You can download it from the Actions run summary.
+
 #### Wi-Fi setup portal (SoftAP)
 
 On boot, the ESP32 tries to connect using saved credentials (from `secrets.h` or prior setup).

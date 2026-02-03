@@ -37,4 +37,10 @@ jobs:
           fi
 
       - name: Compile sketch
-        run: arduino-cli compile --fqbn "$FQBN" esp32
+        run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 esp32
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-build
+          path: build/esp32
