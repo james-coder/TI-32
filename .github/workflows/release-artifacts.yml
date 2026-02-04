@@ -62,6 +62,7 @@ jobs:
       - name: Build custom ESP32 libs (no BT/mesh)
         if: steps.cache-esp32-libs.outputs.cache-hit != 'true'
         env:
+          LIB_BUILDER_AR_USER: espressif
           LIB_BUILDER_GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/build-esp32-libs.sh
 
