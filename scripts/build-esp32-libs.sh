@@ -35,7 +35,7 @@ cp "$DEFCONFIG_SRC" "$LIB_BUILDER_DIR/configs/defconfig.$DEFCONFIG_NAME"
   export GIT_CONFIG_GLOBAL="$LIB_BUILDER_DIR/.gitconfig-empty"
   export GIT_TERMINAL_PROMPT=0
   if [ -n "${LIB_BUILDER_GITHUB_TOKEN:-}" ]; then
-    export GITHUB_TOKEN="$LIB_BUILDER_GITHUB_TOKEN"
+    export GITHUB_TOKEN="x-access-token:${LIB_BUILDER_GITHUB_TOKEN}"
   else
     unset GITHUB_TOKEN
   fi
