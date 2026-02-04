@@ -61,7 +61,11 @@ jobs:
           echo "== Size breakdown (top groups) =="
           node - "$map" <<'JS'
           const fs = require('fs');
-          const mapPath = process.argv[1];
+          const mapPath = process.argv[2];
+          if (!mapPath) {
+            console.error('Map path argument missing.');
+            process.exit(1);
+          }
           const sectionLine = /^\s+\.(text|rodata|literal|eh_frame)\S*\s*$/;
           const sectionLineWithSize = /^\s+\.(text|rodata|literal|eh_frame)\S*\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
           const sizeLine = /^\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
