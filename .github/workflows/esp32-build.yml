@@ -36,8 +36,8 @@ jobs:
             cp esp32/secrets.h.example esp32/secrets.h
           fi
 
-      - name: Compile sketch
-        run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 esp32
+      - name: Compile sketch (no BT/mesh)
+        run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" esp32
 
       - name: Size report
         run: |

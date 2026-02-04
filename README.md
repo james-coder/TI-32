@@ -103,6 +103,15 @@ arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 esp32
 arduino-cli upload -p /dev/ttyACM0 --fqbn esp32:esp32:XIAO_ESP32C3 esp32
 ```
 
+Optional (smaller firmware, no Bluetooth/mesh):
+```
+arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 \
+  --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
+  esp32
+```
+This uses `esp32/ld_libs.no_bt_mesh` to avoid linking BT/mesh libraries. The weak stubs in
+`esp32/no_bt_mesh_stubs.c` satisfy the remaining symbols.
+
 If upload fails, recheck the port and put the board in bootloader mode, then try again.
 
 #### CI build artifacts
@@ -136,6 +145,8 @@ Release update (optional):
 - The workflow `.github/workflows/web-flasher-release.yml` builds firmware on GitHub Release publish.
 - It commits the latest firmware binaries + manifest version into `web-flasher/`, so Netlify (Git-connected)
   serves the current release without any Netlify credentials.
+- The workflow `.github/workflows/release-artifacts.yml` runs on tag push (`v*`) to create/update a GitHub Release
+  and attach the firmware binaries.
 
 #### Wi-Fi setup portal (SoftAP)
 

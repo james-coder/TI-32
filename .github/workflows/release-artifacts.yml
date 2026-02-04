@@ -1,0 +1,73 @@
+name: release-artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      FQBN: esp32:esp32:XIAO_ESP32C3
+      ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init --additional-urls "$ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS"
+          arduino-cli config set library.enable_unsafe_install true
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "UrlEncode"
+          arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
+
+      - name: Ensure secrets.h exists
+        run: |
+          if [ ! -f esp32/secrets.h ]; then
+            cp esp32/secrets.h.example esp32/secrets.h
+          fi
+
+      - name: Compile sketch (no BT/mesh)
+        run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" esp32
+
+      - name: Collect firmware artifacts
+        run: |
+          mkdir -p /tmp/ti32-release
+          bootloader=$(ls -1 build/esp32/*.bootloader.bin 2>/dev/null | head -n1 || true)
+          partitions=$(ls -1 build/esp32/*.partitions.bin 2>/dev/null | head -n1 || true)
+          app=$(ls -1 build/esp32/*.bin 2>/dev/null | grep -v -E '(bootloader|partitions)' | head -n1 || true)
+
+          if [[ -z "$bootloader" || -z "$partitions" || -z "$app" ]]; then
+            echo "Missing firmware outputs in build/esp32" >&2
+            exit 2
+          fi
+
+          cp "$bootloader" /tmp/ti32-release/bootloader.bin
+          cp "$partitions" /tmp/ti32-release/partitions.bin
+          cp "$app" /tmp/ti32-release/firmware.bin
+
+      - name: Create or update release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" /tmp/ti32-release/bootloader.bin /tmp/ti32-release/partitions.bin /tmp/ti32-release/firmware.bin --clobber
+          else
+            gh release create "$TAG" /tmp/ti32-release/bootloader.bin /tmp/ti32-release/partitions.bin /tmp/ti32-release/firmware.bin --generate-notes
+          fi
