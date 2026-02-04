@@ -41,11 +41,24 @@ cp "$DEFCONFIG_SRC" "$LIB_BUILDER_DIR/configs/defconfig.$DEFCONFIG_NAME"
     unset GITHUB_TOKEN
   fi
   ./build.sh -t "$TARGET" -b idf-libs "$DEFCONFIG_NAME"
+
+  IDF_PATH="$LIB_BUILDER_DIR/esp-idf"
+  if [ -f "$IDF_PATH/export.sh" ]; then
+    # shellcheck disable=SC1090
+    source "$IDF_PATH/export.sh"
+  fi
+
+  ./build.sh -s -t "$TARGET" -b copy-bootloader "$DEFCONFIG_NAME"
+  ./build.sh -s -t "$TARGET" -b mem-variant "$DEFCONFIG_NAME"
 )
 
 SRC_DIR="$LIB_BUILDER_DIR/out/tools/esp32-arduino-libs/$TARGET"
 if [ ! -d "$SRC_DIR" ]; then
   echo "Missing built libs: $SRC_DIR" >&2
+  exit 1
+fi
+if [ ! -f "$SRC_DIR/bin/bootloader_qio_80m.elf" ]; then
+  echo "Missing bootloader in built libs: $SRC_DIR/bin/bootloader_qio_80m.elf" >&2
   exit 1
 fi
 
