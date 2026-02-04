@@ -25,10 +25,38 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
 
+      - name: Detect ESP32 core version
+        run: |
+          version=$(arduino-cli core list | awk '$1=="esp32:esp32" {print $2}' | head -n1)
+          if [ -z "$version" ]; then
+            echo "ESP32 core not found after install" >&2
+            exit 1
+          fi
+          echo "ESP32_CORE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Cache custom ESP32 libs
+        id: cache-esp32-libs
+        uses: actions/cache@v4
+        with:
+          path: .cache/esp32-arduino-libs
+          key: esp32c3-libs-no-bt-mesh-${{ env.ESP32_CORE_VERSION }}-${{ hashFiles('esp32/lib-builder/defconfig.no_bt_mesh') }}
+
       - name: Install libraries
         run: |
           arduino-cli lib install "UrlEncode"
           arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
+
+      - name: Install lib-builder dependencies
+        if: steps.cache-esp32-libs.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget curl libssl-dev libncurses-dev flex bison gperf \
+            python3 python3-venv python3-pip python3-setuptools python3-serial python3-click python3-cryptography \
+            python3-future python3-pyparsing python3-pyelftools cmake ninja-build ccache jq
+
+      - name: Build custom ESP32 libs (no BT/mesh)
+        if: steps.cache-esp32-libs.outputs.cache-hit != 'true'
+        run: ./scripts/build-esp32-libs.sh
 
       - name: Ensure secrets.h exists
         run: |
@@ -37,7 +65,17 @@ jobs:
           fi
 
       - name: Compile sketch (no BT/mesh)
-        run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" esp32
+        env:
+          CUSTOM_LIBS_PATH: ${{ github.workspace }}/.cache/esp32-arduino-libs/esp32c3
+        run: |
+          if [ ! -d "$CUSTOM_LIBS_PATH" ]; then
+            echo "Custom libs not found at $CUSTOM_LIBS_PATH" >&2
+            exit 1
+          fi
+          arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 \
+            --build-property "runtime.tools.esp32c3-libs.path=$CUSTOM_LIBS_PATH" \
+            --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
+            esp32
 
       - name: Size report
         run: |

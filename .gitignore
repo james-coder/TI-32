@@ -16,4 +16,5 @@ gpt\.png
 *.csv
 !/test-images/*
 /cache/
+.cache/
 !blank.bmp

@@ -5,6 +5,11 @@ FQBN="${FQBN:-esp32:esp32:XIAO_ESP32C3}"
 BUILD_DIR="${BUILD_DIR:-/tmp/ti32-webflash-build}"
 OUT_DIR="${OUT_DIR:-web-flasher/firmware}"
 LIBS_FILE="${LIBS_FILE:-esp32/ld_libs.no_bt_mesh}"
+CUSTOM_LIBS_PATH="${CUSTOM_LIBS_PATH:-}"
+
+if [ -z "$CUSTOM_LIBS_PATH" ] && [ -d ".cache/esp32-arduino-libs/esp32c3" ]; then
+  CUSTOM_LIBS_PATH=".cache/esp32-arduino-libs/esp32c3"
+fi
 
 if ! command -v arduino-cli >/dev/null 2>&1; then
   echo "arduino-cli not found. Install it first (see README)." >&2
@@ -17,6 +22,9 @@ mkdir -p "$BUILD_DIR"
 EXTRA_BUILD_PROPS=()
 if [ -f "$LIBS_FILE" ]; then
   EXTRA_BUILD_PROPS+=(--build-property "compiler.c.elf.libs=@${LIBS_FILE}")
+fi
+if [ -n "$CUSTOM_LIBS_PATH" ] && [ -d "$CUSTOM_LIBS_PATH" ]; then
+  EXTRA_BUILD_PROPS+=(--build-property "runtime.tools.esp32c3-libs.path=${CUSTOM_LIBS_PATH}")
 fi
 
 arduino-cli compile --fqbn "$FQBN" --output-dir "$BUILD_DIR" "${EXTRA_BUILD_PROPS[@]}" esp32
