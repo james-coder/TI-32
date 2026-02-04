@@ -6,6 +6,16 @@ server for GPT, images, and program downloads.
 
 ![built pcb](./pcb/built.png)
 
+## Legal and trademark notice
+
+This project is **not** affiliated with, sponsored by, or endorsed by Texas Instruments Incorporated.
+“TI”, “TI‑84 Plus”, and related marks are trademarks of Texas Instruments Incorporated; all other
+trademarks are the property of their respective owners.
+
+This repository is provided for educational and experimental purposes. Use it at your own risk.
+You are responsible for complying with any applicable laws, school or test policies, and device
+terms of use. No warranty is provided.
+
 ## Project Overview
 
 Core pieces:
