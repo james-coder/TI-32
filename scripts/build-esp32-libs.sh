@@ -31,6 +31,11 @@ cp "$DEFCONFIG_SRC" "$LIB_BUILDER_DIR/configs/defconfig.$DEFCONFIG_NAME"
 
 (
   cd "$LIB_BUILDER_DIR"
+  if [ -n "${LIB_BUILDER_GITHUB_TOKEN:-}" ]; then
+    export GITHUB_TOKEN="$LIB_BUILDER_GITHUB_TOKEN"
+  else
+    unset GITHUB_TOKEN
+  fi
   ./build.sh -t "$TARGET" -b idf-libs "$DEFCONFIG_NAME"
 )
 
