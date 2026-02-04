@@ -39,6 +39,115 @@ jobs:
       - name: Compile sketch
         run: arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 esp32
 
+      - name: Size report
+        run: |
+          map=$(ls -1 build/esp32/*.map 2>/dev/null | head -n1 || true)
+          elf=$(ls -1 build/esp32/*.elf 2>/dev/null | head -n1 || true)
+          sizebin=$(find ~/.arduino15/packages/esp32/tools -name riscv32-esp-elf-size -type f | head -n1 || true)
+
+          if [ -z "$map" ] || [ -z "$elf" ]; then
+            echo "Missing .map or .elf in build/esp32" >&2
+            exit 1
+          fi
+          if [ -z "$sizebin" ]; then
+            echo "riscv32-esp-elf-size not found" >&2
+            exit 1
+          fi
+
+          echo "== Section sizes (first 20 lines) =="
+          "$sizebin" -A "$elf" | head -n 20
+
+          echo ""
+          echo "== Size breakdown (top groups) =="
+          node - "$map" <<'JS'
+          const fs = require('fs');
+          const mapPath = process.argv[1];
+          const sectionLine = /^\s+\.(text|rodata|literal|eh_frame)\S*\s*$/;
+          const sectionLineWithSize = /^\s+\.(text|rodata|literal|eh_frame)\S*\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
+          const sizeLine = /^\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
+
+          const sizes = new Map();
+          const fileSizes = new Map();
+
+          function add(map, key, value) {
+            map.set(key, (map.get(key) || 0) + value);
+          }
+
+          function groupFor(p) {
+            const archiveMatch = p.match(/([^/]+\.a)\(/);
+            if (archiveMatch) {
+              return `archive:${archiveMatch[1]}`;
+            }
+            if (p.includes('/libraries/')) {
+              const tail = p.split('/libraries/')[1];
+              const lib = tail.split('/')[0];
+              return `lib:${lib}`;
+            }
+            if (p.includes('/cores/esp32/')) {
+              return 'core:esp32';
+            }
+            if (p.includes('/variants/')) {
+              return 'core:variant';
+            }
+            if (p.includes('/sketch/')) {
+              return 'sketch';
+            }
+            if (p.includes('/esp32/') && p.endsWith('.ino.cpp.o')) {
+              return 'sketch';
+            }
+            return 'other';
+          }
+
+          const lines = fs.readFileSync(mapPath, 'utf8').split(/\r?\n/);
+          let pendingSection = null;
+          for (const line of lines) {
+            let m = sectionLineWithSize.exec(line);
+            if (m) {
+              const size = parseInt(m[2], 16);
+              const obj = m[3].trim();
+              const grp = groupFor(obj);
+              add(sizes, grp, size);
+              add(fileSizes, obj, size);
+              pendingSection = null;
+              continue;
+            }
+
+            m = sectionLine.exec(line);
+            if (m) {
+              pendingSection = m[1];
+              continue;
+            }
+
+            if (pendingSection) {
+              m = sizeLine.exec(line);
+              if (m) {
+                const size = parseInt(m[1], 16);
+                const obj = m[2].trim();
+                const grp = groupFor(obj);
+                add(sizes, grp, size);
+                add(fileSizes, obj, size);
+              }
+              pendingSection = null;
+            }
+          }
+
+          const topGroups = Array.from(sizes.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15);
+          for (const [grp, size] of topGroups) {
+            console.log(`${grp.padEnd(30)} ${(size / 1024).toFixed(1).padStart(8)} KiB`);
+          }
+
+          console.log('');
+          console.log('== Largest object files ==');
+          const topFiles = Array.from(fileSizes.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 15);
+          for (const [obj, size] of topFiles) {
+            console.log(`${(size / 1024).toFixed(1).padStart(8)} KiB  ${obj}`);
+          }
+          JS
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
