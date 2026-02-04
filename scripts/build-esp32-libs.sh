@@ -57,8 +57,25 @@ if [ ! -d "$SRC_DIR" ]; then
   echo "Missing built libs: $SRC_DIR" >&2
   exit 1
 fi
+
+# lib-builder sometimes skips bootloader outputs; fall back to the Arduino core copy.
+DEFAULT_LIBS_DIR="${DEFAULT_LIBS_DIR:-}"
+if [ -z "$DEFAULT_LIBS_DIR" ]; then
+  DEFAULT_LIBS_DIR=$(ls -1d "$HOME"/.arduino15/packages/esp32/tools/${TARGET}-libs/* 2>/dev/null | sort -V | tail -n1 || true)
+fi
+if [ -n "$DEFAULT_LIBS_DIR" ] && [ -d "$DEFAULT_LIBS_DIR/bin" ]; then
+  mkdir -p "$SRC_DIR/bin"
+  for f in "$DEFAULT_LIBS_DIR"/bin/bootloader_*.elf; do
+    [ -e "$f" ] || continue
+    dst="$SRC_DIR/bin/$(basename "$f")"
+    if [ ! -f "$dst" ]; then
+      cp "$f" "$dst"
+    fi
+  done
+fi
 if [ ! -f "$SRC_DIR/bin/bootloader_qio_80m.elf" ]; then
   echo "Missing bootloader in built libs: $SRC_DIR/bin/bootloader_qio_80m.elf" >&2
+  ls -la "$SRC_DIR/bin" 2>/dev/null || true
   exit 1
 fi
 
