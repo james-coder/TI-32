@@ -1,0 +1,76 @@
+name: esp32-libs-build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "esp32/lib-builder/defconfig.no_bt_mesh"
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  build-libs:
+    runs-on: ubuntu-latest
+    env:
+      FQBN: esp32:esp32:XIAO_ESP32C3
+      ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init --additional-urls "$ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS"
+          arduino-cli config set library.enable_unsafe_install true
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Detect ESP32 core version
+        run: |
+          version=$(arduino-cli core list | awk '$1=="esp32:esp32" {print $2}' | head -n1)
+          if [ -z "$version" ]; then
+            echo "ESP32 core not found after install" >&2
+            exit 1
+          fi
+          echo "ESP32_CORE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install lib-builder dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget curl libssl-dev libncurses-dev flex bison gperf \
+            python3 python3-venv python3-pip python3-setuptools python3-serial python3-click python3-cryptography \
+            python3-future python3-pyparsing python3-pyelftools cmake ninja-build ccache jq
+
+      - name: Build custom ESP32 libs (no BT/mesh)
+        env:
+          LIB_BUILDER_AR_USER: espressif
+          LIB_BUILDER_GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/build-esp32-libs.sh
+
+      - name: Package libs
+        run: |
+          asset="esp32c3-no-bt-mesh-${ESP32_CORE_VERSION}.tar.gz"
+          tar -czf "/tmp/$asset" -C .cache/esp32-arduino-libs esp32c3
+          echo "LIBS_ASSET=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32c3-no-bt-mesh-libs
+          path: /tmp/${{ env.LIBS_ASSET }}
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="esp32-libs"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "ESP32 prebuilt libs" --notes "Prebuilt ESP32-C3 libs (no BT/mesh)."
+          fi
+          gh release upload "$tag" "/tmp/${LIBS_ASSET}" --clobber
