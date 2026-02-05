@@ -88,6 +88,41 @@ if [ -n "$DEFAULT_LIBS_DIR" ]; then
         ;;
     esac
   done
+  if [ -d "$DEFAULT_LIBS_DIR/lib" ]; then
+    mkdir -p "$SRC_DIR/lib"
+    for f in "$DEFAULT_LIBS_DIR"/lib/*.a; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f")"
+      case "$base" in
+        libbt.a|libbtdm_app.a|libble_mesh.a|libmesh.a)
+          continue
+          ;;
+      esac
+      if [ ! -f "$SRC_DIR/lib/$base" ]; then
+        cp "$f" "$SRC_DIR/lib/$base"
+      fi
+    done
+  fi
+  if [ -d "$DEFAULT_LIBS_DIR/ld" ]; then
+    mkdir -p "$SRC_DIR/ld"
+    for f in "$DEFAULT_LIBS_DIR"/ld/*; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f")"
+      if [ ! -f "$SRC_DIR/ld/$base" ]; then
+        cp "$f" "$SRC_DIR/ld/$base"
+      fi
+    done
+  fi
+  if [ -d "$DEFAULT_LIBS_DIR/flags" ]; then
+    mkdir -p "$SRC_DIR/flags"
+    for f in "$DEFAULT_LIBS_DIR"/flags/*; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f")"
+      if [ ! -f "$SRC_DIR/flags/$base" ]; then
+        cp "$f" "$SRC_DIR/flags/$base"
+      fi
+    done
+  fi
 fi
 if [ ! -f "$SRC_DIR/bin/bootloader_qio_80m.elf" ]; then
   echo "Missing bootloader in built libs: $SRC_DIR/bin/bootloader_qio_80m.elf" >&2
