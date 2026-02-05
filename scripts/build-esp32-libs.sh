@@ -73,6 +73,22 @@ if [ -n "$DEFAULT_LIBS_DIR" ] && [ -d "$DEFAULT_LIBS_DIR/bin" ]; then
     fi
   done
 fi
+if [ -n "$DEFAULT_LIBS_DIR" ]; then
+  if [ ! -f "$SRC_DIR/sdkconfig" ] && [ -f "$DEFAULT_LIBS_DIR/sdkconfig" ]; then
+    cp "$DEFAULT_LIBS_DIR/sdkconfig" "$SRC_DIR/sdkconfig"
+  fi
+  for dir in "$DEFAULT_LIBS_DIR"/*_*; do
+    [ -d "$dir" ] || continue
+    base="$(basename "$dir")"
+    case "$base" in
+      *_qspi|*_opi)
+        if [ ! -d "$SRC_DIR/$base" ]; then
+          cp -R "$dir" "$SRC_DIR/$base"
+        fi
+        ;;
+    esac
+  done
+fi
 if [ ! -f "$SRC_DIR/bin/bootloader_qio_80m.elf" ]; then
   echo "Missing bootloader in built libs: $SRC_DIR/bin/bootloader_qio_80m.elf" >&2
   ls -la "$SRC_DIR/bin" 2>/dev/null || true
