@@ -130,8 +130,9 @@ arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 \
   --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
   esp32
 ```
-The weak stubs in `esp32/no_bt_mesh_stubs.c` satisfy remaining symbols. CI now checks the map file
-and fails if BT/mesh archives are linked.
+The weak stubs in `esp32/no_bt_mesh_stubs.c` satisfy remaining symbols for local no-BT/mesh builds.
+
+GitHub Actions firmware builds use `PartitionScheme=huge_app` with the default ESP32 core libs.
 
 If upload fails, recheck the port and put the board in bootloader mode, then try again.
 

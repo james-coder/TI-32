@@ -38,57 +38,10 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
 
-      - name: Detect ESP32 core version
-        run: |
-          version=$(arduino-cli core list | awk '$1=="esp32:esp32" {print $2}' | head -n1)
-          if [ -z "$version" ]; then
-            echo "ESP32 core not found after install" >&2
-            exit 1
-          fi
-          echo "ESP32_CORE_VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: Cache custom ESP32 libs
-        id: cache-esp32-libs
-        uses: actions/cache@v4
-        with:
-          path: .cache/esp32-arduino-libs
-          key: esp32c3-libs-no-bt-mesh-${{ env.ESP32_CORE_VERSION }}-${{ hashFiles('esp32/lib-builder/defconfig.no_bt_mesh') }}
-
-      - name: Download prebuilt ESP32 libs (if available)
-        id: prebuilt-libs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          asset="esp32c3-no-bt-mesh-${ESP32_CORE_VERSION}.tar.gz"
-          if gh release view esp32-libs >/dev/null 2>&1; then
-            if gh release download esp32-libs -p "$asset" -O "/tmp/$asset"; then
-              mkdir -p .cache/esp32-arduino-libs
-              tar -xzf "/tmp/$asset" -C .cache/esp32-arduino-libs
-              echo "found=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "found=false" >> "$GITHUB_OUTPUT"
-
       - name: Install libraries
         run: |
           arduino-cli lib install "UrlEncode"
           arduino-cli lib install --git-url https://github.com/KermMartian/ArTICL.git
-
-      - name: Install lib-builder dependencies
-        if: steps.cache-esp32-libs.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git wget curl libssl-dev libncurses-dev flex bison gperf \
-            python3 python3-venv python3-pip python3-setuptools python3-serial python3-click python3-cryptography \
-            python3-future python3-pyparsing python3-pyelftools cmake ninja-build ccache jq
-
-      - name: Build custom ESP32 libs (no BT/mesh)
-        if: steps.prebuilt-libs.outputs.found != 'true' && steps.cache-esp32-libs.outputs.cache-hit != 'true'
-        env:
-          LIB_BUILDER_AR_USER: espressif
-          LIB_BUILDER_GITHUB_TOKEN: ${{ github.token }}
-        run: ./scripts/build-esp32-libs.sh
 
       - name: Determine release tag
         id: tag
@@ -109,34 +62,16 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Build from tag (no BT/mesh)
+      - name: Build from tag
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           git checkout "refs/tags/$tag"
           if [ ! -f esp32/secrets.h ]; then
             cp esp32/secrets.h.example esp32/secrets.h
           fi
-          CUSTOM_LIBS_PATH="${{ github.workspace }}/.cache/esp32-arduino-libs/esp32c3"
-          if [ ! -d "$CUSTOM_LIBS_PATH" ]; then
-            echo "Custom libs not found at $CUSTOM_LIBS_PATH" >&2
-            exit 1
-          fi
           arduino-cli compile --fqbn "$FQBN" --output-dir /tmp/ti32-build \
             --board-options "PartitionScheme=huge_app" \
-            --build-property "runtime.tools.esp32c3-libs.path=$CUSTOM_LIBS_PATH" \
-            --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
             esp32
-
-      - name: Verify no BT/mesh linkage
-        env:
-          CUSTOM_LIBS_PATH: ${{ github.workspace }}/.cache/esp32-arduino-libs/esp32c3
-        run: |
-          map=$(ls -1 /tmp/ti32-build/*.map 2>/dev/null | head -n1 || true)
-          if [ -z "$map" ]; then
-            echo "Missing .map in /tmp/ti32-build" >&2
-            exit 1
-          fi
-          ./scripts/check-no-bt-mesh-linkage.sh "$map" "$CUSTOM_LIBS_PATH"
 
       - name: Prepare web flasher firmware
         run: |
