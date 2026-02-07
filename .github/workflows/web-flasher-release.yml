@@ -3,6 +3,9 @@ name: web-flasher-release
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -92,10 +95,14 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           tag="$RELEASE_TAG"
           if [ -n "$INPUT_TAG" ]; then
             tag="$INPUT_TAG"
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$PUSH_TAG" ]; then
+            tag="$PUSH_TAG"
           fi
           if [ -z "$tag" ]; then
             tag=$(git describe --tags --abbrev=0)
