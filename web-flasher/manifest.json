@@ -1,14 +1,23 @@
 {
   "name": "TI-32 Firmware",
-  "version": "0.1.0",
+  "version": "v1.0",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-C3",
       "parts": [
-        { "path": "firmware/bootloader.bin", "offset": 0 },
-        { "path": "firmware/partitions.bin", "offset": 32768 },
-        { "path": "firmware/firmware.bin", "offset": 65536 }
+        {
+          "path": "firmware/bootloader.bin",
+          "offset": 0
+        },
+        {
+          "path": "firmware/partitions.bin",
+          "offset": 32768
+        },
+        {
+          "path": "firmware/firmware.bin",
+          "offset": 65536
+        }
       ]
     }
   ]
