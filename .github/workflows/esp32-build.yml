@@ -92,6 +92,7 @@ jobs:
             exit 1
           fi
           arduino-cli compile --fqbn "$FQBN" --output-dir build/esp32 \
+            --board-options "PartitionScheme=huge_app" \
             --build-property "runtime.tools.esp32c3-libs.path=$CUSTOM_LIBS_PATH" \
             --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
             esp32
