@@ -96,6 +96,17 @@ jobs:
             --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
             esp32
 
+      - name: Verify no BT/mesh linkage
+        env:
+          CUSTOM_LIBS_PATH: ${{ github.workspace }}/.cache/esp32-arduino-libs/esp32c3
+        run: |
+          map=$(ls -1 build/esp32/*.map 2>/dev/null | head -n1 || true)
+          if [ -z "$map" ]; then
+            echo "Missing .map in build/esp32" >&2
+            exit 1
+          fi
+          ./scripts/check-no-bt-mesh-linkage.sh "$map" "$CUSTOM_LIBS_PATH"
+
       - name: Size report
         run: |
           map=$(ls -1 build/esp32/*.map 2>/dev/null | head -n1 || true)

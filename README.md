@@ -119,17 +119,19 @@ arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 \
   --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
   esp32
 ```
-This uses `esp32/ld_libs.no_bt_mesh` to avoid linking BT/mesh libraries. The weak stubs in
-`esp32/no_bt_mesh_stubs.c` satisfy the remaining symbols.
+This only changes the linker library list. On stock ESP32 core libs, BT/mesh archives may still
+be pulled in by transitive references.
 
-For a larger size reduction, rebuild the ESP32 core libs with BT/mesh disabled (slow, extra deps):
+Use custom core libs built with BT/mesh disabled (slow, extra deps):
 ```
 ./scripts/build-esp32-libs.sh
 arduino-cli compile --fqbn esp32:esp32:XIAO_ESP32C3 \
   --build-property "runtime.tools.esp32c3-libs.path=.cache/esp32-arduino-libs/esp32c3" \
+  --build-property "compiler.c.elf.libs=@esp32/ld_libs.no_bt_mesh" \
   esp32
 ```
-The GitHub Actions build uses this custom libs path.
+The weak stubs in `esp32/no_bt_mesh_stubs.c` satisfy remaining symbols. CI now checks the map file
+and fails if BT/mesh archives are linked.
 
 If upload fails, recheck the port and put the board in bootloader mode, then try again.
 
