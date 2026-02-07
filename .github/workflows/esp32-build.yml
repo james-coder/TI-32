@@ -135,8 +135,8 @@ jobs:
             process.exit(1);
           }
           const sectionLine = /^\s+\.(text|rodata|literal|eh_frame)\S*\s*$/;
-          const sectionLineWithSize = /^\s+\.(text|rodata|literal|eh_frame)\S*\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
-          const sizeLine = /^\s+0x[0-9a-fA-F]+\s+0x([0-9a-fA-F]+)\s+(.+)$/;
+          const sectionLineWithSize = /^\s+\.(text|rodata|literal|eh_frame)\S*\s+(0x[0-9a-fA-F]+)\s+(0x([0-9a-fA-F]+))\s+(.+)$/;
+          const sizeLine = /^\s+(0x[0-9a-fA-F]+)\s+(0x([0-9a-fA-F]+))\s+(.+)$/;
 
           const sizes = new Map();
           const fileSizes = new Map();
@@ -175,8 +175,13 @@ jobs:
           for (const line of lines) {
             let m = sectionLineWithSize.exec(line);
             if (m) {
-              const size = parseInt(m[2], 16);
-              const obj = m[3].trim();
+              const addr = parseInt(m[1], 16);
+              const size = parseInt(m[3], 16);
+              const obj = m[4].trim();
+              if (!size || addr === 0) {
+                pendingSection = null;
+                continue;
+              }
               const grp = groupFor(obj);
               add(sizes, grp, size);
               add(fileSizes, obj, size);
@@ -193,8 +198,13 @@ jobs:
             if (pendingSection) {
               m = sizeLine.exec(line);
               if (m) {
-                const size = parseInt(m[1], 16);
-                const obj = m[2].trim();
+                const addr = parseInt(m[1], 16);
+                const size = parseInt(m[3], 16);
+                const obj = m[4].trim();
+                if (!size || addr === 0) {
+                  pendingSection = null;
+                  continue;
+                }
                 const grp = groupFor(obj);
                 add(sizes, grp, size);
                 add(fileSizes, obj, size);
